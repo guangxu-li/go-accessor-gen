@@ -6,12 +6,15 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"text/template"
 
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/imports"
 )
 
@@ -24,63 +27,64 @@ func main() {
 
 func Process(opts ...FuncOption) error {
 	options := FuncOptions(opts).New()
-	return processDirectory(options)
+	return process(options)
 }
 
-// processDirectory processes all Go files in a directory, either recursively or non-recursively
-func processDirectory(o *Options) error {
+// process processes all Go files in a directory, either recursively or non-recursively
+func process(o *Options) error {
 	if o.Recursive {
 		// Walk the directory recursively
 		return filepath.WalkDir(o.Dir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-
-			if ignoreDirEntry(d) {
+			if !d.IsDir() {
 				return nil
 			}
-			if err := processFile(path, o.Mode); err != nil {
-				return fmt.Errorf("error processing file %s: %v", path, err)
-			}
-			return nil
+			return processDir(path, o.Mode)
 		})
 	} else {
-		// Read the directory non-recursively
-		entries, err := os.ReadDir(o.Dir)
-		if err != nil {
-			return fmt.Errorf("error reading directory %s: %v", o.Dir, err)
+		if err := processDir(o.Dir, o.Mode); err != nil {
+			return fmt.Errorf("error processing directory %s: %w", o.Dir, err)
 		}
+	}
+	return nil
+}
 
-		for _, entry := range entries {
-			if ignoreDirEntry(entry) {
-				continue
+func processDir(dirPath string, mode ModeEnum) error {
+	dirPath, err := filepath.Abs(dirPath)
+	if err != nil {
+		return fmt.Errorf("error getting absolute path for %s: %w", dirPath, err)
+	}
+	resp, err := loadPackages(dirPath)
+	if err != nil {
+		return fmt.Errorf("error loading packages: %w", err)
+	}
+	pkgs := resp.packages
+	astFiles := resp.astFiles
+
+	for _, pkg := range pkgs {
+		for _, filePath := range pkg.GoFiles {
+			astFileInterface, ok := astFiles.Load(filePath)
+			if !ok {
+				return fmt.Errorf("error loading ast file for %s", filePath)
 			}
-			if err := processFile(filepath.Join(o.Dir, entry.Name()), o.Mode); err != nil {
-				return fmt.Errorf("error processing file %s: %v", entry.Name(), err)
+			astFile := astFileInterface.(*ast.File)
+			if err := processFile(pkgs, astFile, filePath, mode); err != nil {
+				return fmt.Errorf("error processing file %s: %w", filePath, err)
 			}
 		}
+	}
+
+	return nil
+}
+
+func processFile(pkgs []*packages.Package, node *ast.File, filePath string, mode ModeEnum) error {
+	if ignoreFilePath(filepath.Base(filePath)) {
 		return nil
 	}
-}
 
-// ignoreDirEntry returns true if the directory entry should be ignored.
-func ignoreDirEntry(entry fs.DirEntry) bool {
-	return entry.IsDir() ||
-		!strings.HasSuffix(entry.Name(), ".go") ||
-		strings.HasSuffix(entry.Name(), "_accessor_gen.go") ||
-		strings.HasSuffix(entry.Name(), "_test.go")
-}
-
-// processFile processes a single Go file, generates getters and setters, and writes them to a new file.
-func processFile(filePath string, mode ModeEnum) error {
-	// Parse the file
-	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
-	if err != nil {
-		return fmt.Errorf("error parsing file %v: %v", filePath, err)
-	}
-
-	// Collect import declarations from the original file
+	dirPath := filepath.Dir(filePath)
 	imports := collectImports(node)
 
 	// Collect struct information
@@ -106,7 +110,11 @@ func processFile(filePath string, mode ModeEnum) error {
 			var fields []StructField
 			for _, field := range structType.Fields.List {
 				fieldType := exprToString(field.Type)
-				deferrencedFieldType, primitivePointer := PrimitivePointerDeferrence(field)
+				deferrencedFieldType := ""
+				primitivePointer := isPrimitivePointer(field.Type, dirPath)
+				if primitivePointer {
+					deferrencedFieldType = fieldType[1:]
+				}
 				for _, fieldName := range field.Names {
 					fieldCnt += 1
 					fields = append(fields, StructField{
@@ -143,7 +151,7 @@ func processFile(filePath string, mode ModeEnum) error {
 			Funcs(template.FuncMap{"CapitalizeFirstLetter": CapitalizeFirstLetter}).
 			Parse(methodTemplate),
 	)
-	if err = tmpl.Execute(&output, data); err != nil {
+	if err := tmpl.Execute(&output, data); err != nil {
 		return fmt.Errorf("error generating output: %v", err)
 	}
 
@@ -166,18 +174,64 @@ func processFile(filePath string, mode ModeEnum) error {
 	return nil
 }
 
-func PrimitivePointerDeferrence(field *ast.Field) (string, bool) {
-	starExpr, ok := field.Type.(*ast.StarExpr)
+// ignoreFilePath returns true if the directory entry should be ignored.
+func ignoreFilePath(path string) bool {
+	return !strings.HasSuffix(path, ".go") ||
+		strings.HasSuffix(path, "_accessor_gen.go") ||
+		strings.HasSuffix(path, "_test.go")
+}
+
+// isPrimitivePointer checks if a field is a pointer to a primitive type and returns the type name.
+func isPrimitivePointer(fieldType ast.Expr, dirPath string) bool {
+	starExpr, ok := fieldType.(*ast.StarExpr)
 	if !ok {
-		return "", false
+		return false
 	}
-	// Check if the element of the pointer is an identifier (ast.Ident)
-	ident, ok := starExpr.X.(*ast.Ident)
-	if !ok {
-		return "", false
+	resp, _ := loadPackages(dirPath) // second time call shall read from cache without error
+	pkgs := resp.packages
+
+	for _, pkg := range pkgs {
+		typ := pkg.TypesInfo.TypeOf(starExpr.X)
+		if typ == nil {
+			continue
+		}
+
+		if _, ok := typ.Underlying().(*types.Basic); ok {
+			return true
+		}
 	}
-	_, ok = primitiveTypes[ident.Name]
-	return ident.Name, ok
+
+	return false
+}
+
+// loadPackages loads the package with the specific name at the specified directory path with cache.
+func loadPackages(dirPath string) (*loadPackagesResponse, error) {
+	if result, ok := packageCache[dirPath]; ok {
+		return result, nil
+	}
+
+	astFiles := &sync.Map{}
+	cfg := &packages.Config{
+		Mode: packages.LoadSyntax | packages.NeedDeps,
+		Dir:  dirPath,
+		ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
+			file, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
+			astFiles.Store(filename, file)
+			return file, err
+		},
+	}
+	pkgs, err := packages.Load(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("error loading package for %s: %w", dirPath, err)
+	}
+	resp := &loadPackagesResponse{
+		packages: pkgs,
+		astFiles: astFiles,
+	}
+
+	packageCache[dirPath] = resp
+
+	return resp, nil
 }
 
 // goImportsAndFormat formats the Go code and fixes imports using the imports.Process function.

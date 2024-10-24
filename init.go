@@ -3,31 +3,19 @@ package main
 import (
 	"fmt"
 	"os"
+	"sync"
+
+	"golang.org/x/tools/go/packages"
 )
 
 var cwd string
 
-var primitiveTypes = map[string]struct{}{
-	"int":        {},
-	"int8":       {},
-	"int16":      {},
-	"int32":      {},
-	"int64":      {},
-	"uint":       {},
-	"uint8":      {},
-	"uint16":     {},
-	"uint32":     {},
-	"uint64":     {},
-	"uintptr":    {},
-	"float32":    {},
-	"float64":    {},
-	"complex64":  {},
-	"complex128": {},
-	"bool":       {},
-	"string":     {},
-	"byte":       {},
-	"rune":       {},
+type loadPackagesResponse struct {
+	packages []*packages.Package
+	astFiles *sync.Map // key: file path, value: *ast.File
 }
+
+var packageCache = make(map[string]*loadPackagesResponse, 10240)
 
 func init() {
 	var err error

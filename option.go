@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 //          ┌─────────────────────────────────────────────────────────┐
@@ -84,7 +85,7 @@ type FuncOption func(o *Options)
 // Dir sets the directory option. Default is the current working directory.
 func Dir(dir string) FuncOption {
 	return func(o *Options) {
-		o.Dir = dir
+		o.Dir = filepath.Clean(dir)
 	}
 }
 

@@ -17,19 +17,16 @@ package {{.PackageName}}
 {{range $struct := .Structs}}
 {{range .Fields}}
 {{if eq $.Mode "getter" "accessor"}}
-// Get{{.Name}} returns the {{.Name}} field.
 {{if .PrimitivePointer}}
-func (s *{{$struct.StructName}}) Get{{ CapitalizeFirstLetter .Name}}() {{.DeferrencedFieldType}} {
+func (s *{{$struct.StructName}}) Get{{ CapitalizeFirstLetter .Name}}() (zero {{.DeferrencedFieldType}}) {
 	if s == nil {
-		var zero {{.DeferrencedFieldType}}
 		return zero
 	}
 	return *s.{{.Name}}
 }
 {{else}}
-func (s *{{$struct.StructName}}) Get{{ CapitalizeFirstLetter .Name}}() {{.Type}} {
+func (s *{{$struct.StructName}}) Get{{ CapitalizeFirstLetter .Name}}() (zero {{.Type}}) {
 	if s == nil {
-		var zero {{.Type}}
 		return zero
 	}
 	return s.{{.Name}}
@@ -37,7 +34,6 @@ func (s *{{$struct.StructName}}) Get{{ CapitalizeFirstLetter .Name}}() {{.Type}}
 {{end}}
 {{end}}
 {{if eq $.Mode "setter" "accessor"}}
-// Set{{.Name}} sets the {{.Name}} field.
 func (s *{{$struct.StructName}}) Set{{ CapitalizeFirstLetter .Name}}(val {{.Type}}) {
 	s.{{.Name}} = val
 }
