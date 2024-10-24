@@ -106,11 +106,14 @@ func processFile(filePath string, mode ModeEnum) error {
 			var fields []StructField
 			for _, field := range structType.Fields.List {
 				fieldType := exprToString(field.Type)
+				deferrencedFieldType, primitivePointer := PrimitivePointerDeferrence(field)
 				for _, fieldName := range field.Names {
 					fieldCnt += 1
 					fields = append(fields, StructField{
-						Name: fieldName.Name,
-						Type: fieldType,
+						Name:                 fieldName.Name,
+						Type:                 fieldType,
+						DeferrencedFieldType: deferrencedFieldType,
+						PrimitivePointer:     primitivePointer,
 					})
 				}
 			}
@@ -161,6 +164,20 @@ func processFile(filePath string, mode ModeEnum) error {
 
 	fmt.Printf("Generated %ss for file: %s\n", mode, filePath)
 	return nil
+}
+
+func PrimitivePointerDeferrence(field *ast.Field) (string, bool) {
+	starExpr, ok := field.Type.(*ast.StarExpr)
+	if !ok {
+		return "", false
+	}
+	// Check if the element of the pointer is an identifier (ast.Ident)
+	ident, ok := starExpr.X.(*ast.Ident)
+	if !ok {
+		return "", false
+	}
+	_, ok = primitiveTypes[ident.Name]
+	return ident.Name, ok
 }
 
 // goImportsAndFormat formats the Go code and fixes imports using the imports.Process function.

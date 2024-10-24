@@ -2,8 +2,10 @@ package main
 
 // StructField represents a field in a struct
 type StructField struct {
-	Name string
-	Type string
+	Name                 string
+	Type                 string
+	DeferrencedFieldType string // the type of the field after deferrencing, if type type is a pointer to a primitive
+	PrimitivePointer     bool   // true if the field is a pointer to a primitive type
 }
 
 // StructInfo holds information about a struct and its fields
