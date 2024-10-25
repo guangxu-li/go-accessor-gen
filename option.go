@@ -18,6 +18,7 @@ func printUsage() {
 	fmt.Println("  --dir        Directory to process (default is current working directory)")
 	fmt.Println("  --mode       Mode to generate: 'getter', 'setter', or 'accessor' (default: accessor)")
 	fmt.Println("  --recursive  Recursively process directories (default: false)")
+	fmt.Println("  --version    Show version information")
 	fmt.Println("  --help       Show this help message")
 }
 
@@ -25,9 +26,15 @@ func funcOptionsFromFlags() FuncOptions {
 	dirFlag := flag.String("dir", cwd, "directory to process")
 	modeFlag := flag.String("mode", ModeAccessor.String(), "getter, setter, accessor")
 	recursiveFlag := flag.Bool("recursive", false, "process directory recursively")
+	versionFlag := flag.Bool("version", false, "display version information")
 
 	flag.Usage = printUsage
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(version)
+		os.Exit(0)
+	}
 
 	return FuncOptions{
 		Dir(*dirFlag),
