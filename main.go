@@ -212,7 +212,7 @@ func loadPackages(dirPath string) (*loadPackagesResponse, error) {
 
 	astFiles := &sync.Map{}
 	cfg := &packages.Config{
-		Mode: packages.LoadSyntax | packages.NeedDeps,
+		Mode: packages.LoadAllSyntax,
 		Dir:  dirPath,
 		ParseFile: func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 			file, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
@@ -272,6 +272,14 @@ func exprToString(expr ast.Expr) string {
 		return "[]" + exprToString(t.Elt)
 	case *ast.MapType:
 		return "map[" + exprToString(t.Key) + "]" + exprToString(t.Value)
+	case *ast.IndexExpr:
+		return exprToString(t.X) + "[" + exprToString(t.Index) + "]"
+	case *ast.IndexListExpr:
+		indices := make([]string, len(t.Indices))
+		for i, index := range t.Indices {
+			indices[i] = exprToString(index)
+		}
+		return exprToString(t.X) + "[" + strings.Join(indices, ", ") + "]"
 	default:
 		return ""
 	}
