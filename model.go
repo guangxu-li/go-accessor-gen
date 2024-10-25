@@ -10,8 +10,9 @@ type StructField struct {
 
 // StructInfo holds information about a struct and its fields
 type StructInfo struct {
-	StructName string
-	Fields     []StructField
+	StructName    string
+	Fields        []StructField
+	TypeParamsStr string
 }
 
 // FileData holds necessary data to generate the target file
