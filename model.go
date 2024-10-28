@@ -6,6 +6,8 @@ type StructField struct {
 	Type                 string
 	DeferrencedFieldType string // the type of the field after deferrencing, if type type is a pointer to a primitive
 	PrimitivePointer     bool   // true if the field is a pointer to a primitive type
+	NonZeroValue         string
+	NonZeroValue2        string
 }
 
 // StructInfo holds information about a struct and its fields

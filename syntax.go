@@ -78,6 +78,8 @@ func collectTmplData(node *ast.File, filePath string, mode ModeEnum) *FileData {
 				if primitivePointer {
 					deferrencedFieldType = fieldType[1:]
 				}
+				nonZeroValue := exprToTestDefaultValue(field.Type, dirPath)
+				nonZeroValue2 := exprToTestDefaultValue2(field.Type, dirPath)
 				for _, fieldName := range field.Names {
 					fieldCnt += 1
 					fields = append(fields, StructField{
@@ -85,6 +87,8 @@ func collectTmplData(node *ast.File, filePath string, mode ModeEnum) *FileData {
 						Type:                 fieldType,
 						DeferrencedFieldType: deferrencedFieldType,
 						PrimitivePointer:     primitivePointer,
+						NonZeroValue:         nonZeroValue,
+						NonZeroValue2:        nonZeroValue2,
 					})
 				}
 			}
@@ -160,6 +164,156 @@ func exprToString(expr ast.Expr) string {
 		return exprToString(t.X) + "[" + strings.Join(indices, ", ") + "]"
 	default:
 		return ""
+	}
+}
+
+func exprToTestDefaultValue(expr ast.Expr, dirPath string) string {
+	if isPrimitivePointer(expr, dirPath) {
+		starExpr, _ := expr.(*ast.StarExpr)
+		return exprToTestDefaultValue(starExpr.X, dirPath)
+	}
+	switch t := expr.(type) {
+	case *ast.StarExpr:
+		return fmt.Sprintf("new(%s)", exprToString(t.X))
+	case *ast.ArrayType:
+		eltZero := exprToTestDefaultValue(t.Elt, dirPath)
+		eltType := exprToString(t.Elt)
+		return fmt.Sprintf(`[]%s{
+				%s,
+				%s,
+				%s,
+			}`, eltType, eltZero, eltZero, eltZero)
+	case *ast.MapType:
+		keyZero := exprToTestDefaultValue(t.Key, dirPath)
+		valueZero := exprToTestDefaultValue(t.Value, dirPath)
+		keyType := exprToString(t.Key)
+		valueType := exprToString(t.Value)
+		return fmt.Sprintf(`map[%s]%s{
+				%s: %s,
+			}`, keyType, valueType, keyZero, valueZero)
+	case *ast.Ident:
+		switch t.Name {
+		case "string":
+			return `"str"`
+		case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64":
+			return t.Name + "(1)"
+		case "float32", "float64":
+			return t.Name + "(1.0)"
+		case "bool":
+			return "true"
+		case "byte":
+			return "uint8(1)"
+		}
+
+		resp, _ := loadPackages(dirPath) // second time call shall read from cache without error
+		pkgs := resp.packages
+
+		name := ""
+		for _, pkg := range pkgs {
+			typ := pkg.TypesInfo.TypeOf(t)
+			if typ == nil {
+				return ""
+			}
+
+			basic, ok := typ.Underlying().(*types.Basic)
+			if ok {
+				name = basic.Name()
+				break
+			}
+
+		}
+
+		switch name {
+		case "string":
+			return t.Name + `("str")`
+		case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64":
+			return t.Name + "(1)"
+		case "bool":
+			return t.Name + "(true)"
+		case "float32", "float64":
+			return t.Name + "(1.0)"
+		case "byte":
+			return t.Name + "1"
+		default:
+			return t.Name + "{}"
+		}
+	default:
+		return exprToString(expr) + "{}"
+	}
+}
+
+func exprToTestDefaultValue2(expr ast.Expr, dirPath string) string {
+	if isPrimitivePointer(expr, dirPath) {
+		starExpr, _ := expr.(*ast.StarExpr)
+		return exprToTestDefaultValue(starExpr.X, dirPath)
+	}
+	switch t := expr.(type) {
+	case *ast.StarExpr:
+		return fmt.Sprintf("new(%s)", exprToString(t.X))
+	case *ast.ArrayType:
+		eltZero := exprToTestDefaultValue(t.Elt, dirPath)
+		eltType := exprToString(t.Elt)
+		return fmt.Sprintf(`[]%s{
+				%s,
+				%s,
+				%s,
+			}`, eltType, eltZero, eltZero, eltZero)
+	case *ast.MapType:
+		keyZero := exprToTestDefaultValue(t.Key, dirPath)
+		valueZero := exprToTestDefaultValue(t.Value, dirPath)
+		keyType := exprToString(t.Key)
+		valueType := exprToString(t.Value)
+		return fmt.Sprintf(`map[%s]%s{
+				%s: %s,
+			}`, keyType, valueType, keyZero, valueZero)
+	case *ast.Ident:
+		switch t.Name {
+		case "string":
+			return `"str2"`
+		case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64":
+			return t.Name + "(2)"
+		case "float32", "float64":
+			return t.Name + "(2.0)"
+		case "bool":
+			return "true"
+		case "byte":
+			return "uint8(2)"
+		}
+
+		resp, _ := loadPackages(dirPath) // second time call shall read from cache without error
+		pkgs := resp.packages
+
+		name := ""
+		for _, pkg := range pkgs {
+			typ := pkg.TypesInfo.TypeOf(t)
+			if typ == nil {
+				return ""
+			}
+
+			basic, ok := typ.Underlying().(*types.Basic)
+			if ok {
+				name = basic.Name()
+				break
+			}
+
+		}
+
+		switch name {
+		case "string":
+			return t.Name + `("str")`
+		case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64":
+			return t.Name + "(2)"
+		case "bool":
+			return t.Name + "(false)"
+		case "float32", "float64":
+			return t.Name + "(2.0)"
+		case "byte":
+			return t.Name + "2"
+		default:
+			return t.Name + "{}"
+		}
+	default:
+		return exprToString(expr) + "{}"
 	}
 }
 

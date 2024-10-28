@@ -90,30 +90,56 @@ func processFile(node *ast.File, filePath string, mode ModeEnum) error {
 		return nil
 	}
 
-	bytes, err := executeTmpl(data, filePath)
+	bytes, err := executeMethodTmpl(data)
 	if err != nil {
 		return fmt.Errorf("error generating tmpl for %s: %w", filePath, err)
 	}
 
-	if bytes, err = goImportsAndFormat(bytes, filePath); err != nil {
-		return fmt.Errorf("error formatting file %v: %v", filePath, err)
-	}
-
-	if err := writeToFile(bytes, filePath); err != nil {
+	if err = goimportSaveMethodFile(bytes, filePath); err != nil {
 		return fmt.Errorf("error writing file %v: %v", filePath, err)
 	}
 
 	fmt.Printf("Generated %ss for file: %s\n", mode, filePath)
+
+	// Generate test code
+	bytes, err = executeTestTmpl(data)
+	if err != nil {
+		return fmt.Errorf("error generating test tmpl for %s: %w", filePath, err)
+	}
+
+	if err := goimportSaveTestFile(bytes, filePath); err != nil {
+		return fmt.Errorf("error writing test file %v: %v", filePath, err)
+	}
+
+	fmt.Printf("Generated tests for file: %s\n", filePath)
+
 	return nil
 }
 
-func writeToFile(bytes []byte, filePath string) error {
+func goimportSaveMethodFile(bytes []byte, filePath string) error {
 	outputFilePath := strings.TrimSuffix(filePath, ".go") + "_accessor_gen.go"
 	if strings.HasSuffix(filePath, "_gen.go") {
 		outputFilePath = strings.TrimSuffix(filePath, "_gen.go") + "_accessor_gen.go"
 	}
-	if err := os.WriteFile(outputFilePath, bytes, 0o644); err != nil {
-		return fmt.Errorf("error writing file %v: %v", outputFilePath, err)
+	return goimportSaveFile(bytes, outputFilePath)
+}
+
+func goimportSaveTestFile(bytes []byte, filePath string) error {
+	outputFilePath := strings.TrimSuffix(filePath, ".go") + "_accessor_gen_test.go"
+	if strings.HasSuffix(filePath, "_gen.go") {
+		outputFilePath = strings.TrimSuffix(filePath, "_gen.go") + "_accessor_gen_test.go"
+	}
+	return goimportSaveFile(bytes, outputFilePath)
+}
+
+func goimportSaveFile(bytes []byte, filePath string) (err error) {
+	originalBytes := bytes
+	if bytes, err = goImportsAndFormat(bytes, filePath); err != nil {
+		bytes = originalBytes
+		// return fmt.Errorf("error formatting file %v: %v", filePath, err)
+	}
+	if err := os.WriteFile(filePath, bytes, 0o644); err != nil {
+		return fmt.Errorf("error writing file %v: %v", filePath, err)
 	}
 	return nil
 }
