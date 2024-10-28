@@ -8,7 +8,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const version = "v1.0.5"
+const version = "v1.0.6"
 
 var cwd string
 

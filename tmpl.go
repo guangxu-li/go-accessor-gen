@@ -24,7 +24,7 @@ package {{.PackageName}}
 {{if eq $.Mode "getter" "accessor"}}
 {{if .PrimitivePointer}}
 func (s *{{$struct.StructName}}{{$struct.TypeParamsStr}}) Get{{ capitalizeFirstLetter .Name}}() (zero {{.DeferrencedFieldType}}) {
-	if s == nil {
+	if s == nil || s.{{.Name}} == nil {
 		return zero
 	}
 	return *s.{{.Name}}
